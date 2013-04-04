@@ -5,13 +5,15 @@
 	<meta charset="UTF-8">
 	<script type="text/javascript" src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
 	<script type="text/javascript" src="json2.js"></script>
-	<script type="text/javascript" src="lib.uuid.js"></script>
+	<script type="text/javascript" src="uuid.js"></script>
+	<script type="text/javascript" src="underscore.js"></script>
 	<script type="text/javascript" src="awsi.js"></script>
 </head>
 <body>
 	<button data-action="connect">Connect</button>
 	<button data-action="levelup">level up</button>
 	<button data-action="scores">Scores</button>
+	<button data-action="crash">Crash</button>
 	<input type="text" name="" id="msg" /><button data-action="send">Send</button>
 	<hr />
 	<div class="log">
@@ -33,9 +35,11 @@
 								reconnect:	true,
 								onConnect:	function(reconnected) {
 									level = 1;
-									console.log("onConnect",reconnected);
+									console.info("#############################");
+									console.info("onConnect",reconnected);
+									console.info("#############################");
 									ws.ask({raceToken: '0c8b800b-2fad-4195-a3b6-d2b30d827dce'}, function(response) {
-										console.info("ws.ask",response);
+										console.info(">>>>>> ws.ask",response);
 										if (response.invalidRaceToken) {
 											// Wrong raceToken
 											console.log("Invalid race token.");
@@ -62,11 +66,14 @@
 						ws.send($("#msg").val());
 					break;
 					case "scores":
-						ws.send({"game_scramble":{"start":1364172728323,"end":1364172736971,"ms":8648,"multiplier":3.469010175763182,"score":3469},"game_memory":{"start":1364172666178,"end":1364172728315,"ms":62137,"multiplier":0.9656082527318667,"score":966},"game_survey":{"start":1364172736983,"end":1364172754508,"ms":17525,"multiplier":null,"score":null}});
+						ws.send({scores:{"game_scramble":{"start":1364172728323,"end":1364172736971,"ms":8648,"multiplier":3.469010175763182,"score":3469},"game_memory":{"start":1364172666178,"end":1364172728315,"ms":62137,"multiplier":0.9656082527318667,"score":966},"game_survey":{"start":1364172736983,"end":1364172754508,"ms":17525,"multiplier":null,"score":null}}});
 					break;
 					case "levelup":
 						ws.send({level: level});
 						level++;
+					break;
+					case "crash":
+						ws.send({crashtest: true});
 					break;
 				}
 			});

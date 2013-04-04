@@ -7,7 +7,7 @@ var awsi = function(options) {
 		onReceive:	function(message) {},
 		onClose:	function() {},
 		interval:	{
-			keepalive:	10000
+			keepalive:	1000000
 		}
 	},options);
 	
@@ -34,7 +34,6 @@ var awsi = function(options) {
 	this.ws				= false;
 };
 awsi.prototype.connect = function() {
-	console.info(this.getExecTime()+">>> connect()");
 	var scope 			= this;
 	this.closeRequest	= false;
 	
@@ -75,8 +74,11 @@ awsi.prototype.connect = function() {
 	}
 };
 awsi.prototype.onConnect = function() {
-	console.info(this.getExecTime()+">>> onConnect()");
 	this.online			= true;
+	this.stackRunning	= false;
+	if (this.reconnecting) {
+		this.reconnected = true;
+	}
 	this.reconnecting	= false;
 	// Start the Keepalive
 	this.keepAliveStart();
@@ -85,14 +87,15 @@ awsi.prototype.onConnect = function() {
 	for (i in this.hooks["onConnect"]) {
 		this.hooks["onConnect"][i](this.reconnected);
 	}
+	// process stack
+	this.processStack();
+	// 
 	this.options.onConnect(this.reconnected);
 	return this;
 };
 awsi.prototype.onReceive = function(data) {
-	console.info(this.getExecTime()+">>> onReceive()");
 	// process hooks first
 	var i;
-	console.log("this.hooks",this.hooks);
 	for (i in this.hooks["onReceive"]) {
 		this.hooks["onReceive"][i](data);
 	}
@@ -100,7 +103,12 @@ awsi.prototype.onReceive = function(data) {
 	return this;
 };
 awsi.prototype.onClose = function(data) {
-	console.info(this.getExecTime()+">>> onClose()");
+	this.stackRunning	= false;
+	this.online 		= false;
+	this.closeRequest 	= false;
+	this.ws				= false;
+	
+	// Stop the stack
 	if (!this.closeRequest) {
 		// unrequested close
 		// Start the reconnection attempt
@@ -114,13 +122,9 @@ awsi.prototype.onClose = function(data) {
 		this.hooks["onClose"][i](data);
 	}
 	this.options.onClose(this.closeRequest);
-	this.online 		= false;
-	this.closeRequest 	= false;
-	this.ws				= false;
 	return this;
 };
 awsi.prototype.hook = function(fn, name, callback) {
-	console.info(this.getExecTime()+">>> hook()");
 	if (!this.hooks[fn]) {
 		this.hooks[fn] = {};
 	}
@@ -130,21 +134,18 @@ awsi.prototype.hook = function(fn, name, callback) {
 	return this;
 };
 awsi.prototype.unhook = function(fn, name) {
-	console.info(this.getExecTime()+">>> unhook()");
 	if (this.hooks[fn] && this.hooks[fn][name]) {
 		delete this.hooks[fn][name];
 	}
 	return this;
 };
 awsi.prototype.send = function(data, async, now) {
-	console.info(this.getExecTime()+">>> send()");
 	if (!now || !this.online || !this.ws) {
 		this.stack.push({
 			type:		"send",
 			data:		data,
 			async:		async
 		});
-		console.log("send() stacked",this.stack);
 	} else {
 		data = JSON.stringify(data);
 		this.ws.send(data);
@@ -153,8 +154,6 @@ awsi.prototype.send = function(data, async, now) {
 	return this;
 };
 awsi.prototype.ask = function(data, callback, async, now) {
-	console.info(this.getExecTime()+">>> ask()");
-	console.log("ask",data, async, now);
 	var scope = this;
 	if (!now || !this.online) {
 		this.stack.push({
@@ -163,17 +162,14 @@ awsi.prototype.ask = function(data, callback, async, now) {
 			callback:	callback,
 			async:		async
 		});
-		console.log("ask() stacked",this.stack);
 	} else {
 		// create unique ask_id
 		var ask_id = uuid.v4();
 		data.ask_id = ask_id;
-		console.log("ask_id",ask_id);
 		// set the hook
 		this.hook("onReceive", "ask-"+ask_id, function(data) {
 			if (data) {
 				if (data.response_id == ask_id) {
-					console.log("HOOK EXECUTED",ask_id, data, callback);
 					// remove the hook
 					scope.unhook("onReceive", "ask-"+ask_id);
 					// return the data
@@ -188,31 +184,28 @@ awsi.prototype.ask = function(data, callback, async, now) {
 	return this;
 };
 awsi.prototype.clearStack = function() {
-	console.info(this.getExecTime()+">>> clearStack()");
 	this.stack 			= [];		// reset the stack
 	this.stackRunning	= false;	// stop the stack
 	return this;
 };
 awsi.prototype.processStack = function() {
-	console.info(this.getExecTime()+">>> processStack()");
 	var scope = this;
 	if (this.stackRunning || this.stack.length == 0 || !this.online) {
 		return this;
 	}
 	// Set the stack as being processed
 	this.stackRunning = true;
-	var item = this.stack[0];
+	var item = _.clone(this.stack[0]);
+	scope.stack.shift();	// Remove that item from the stack
 	switch (item.type) {
 		case "send":
 			if (!item.async) {
 				// Sync exec
 				this.ask(item.data, function(data) {
-					scope.stack.shift();	// Remove that item from the stack
 					scope.stackRunning = false;
 					scope.processStack();	// continue with the next element
 				}, false, true);
 			} else {
-				scope.stack.shift();	// Remove that item from the stack
 				// Async exec
 				this.send(item.data, false, true);
 				this.stackRunning = false;
@@ -222,13 +215,11 @@ awsi.prototype.processStack = function() {
 			if (!item.async) {
 				// Sync exec
 				this.ask(item.data, function(data) {
-					scope.stack.shift();	// Remove that item from the stack
 					item.callback(data);
 					scope.stackRunning = false;
 					scope.processStack();	// continue with the next element
 				}, false, true);
 			} else {
-				scope.stack.shift();	// Remove that item from the stack
 				this.ask(item.data, item.callback, false, true);
 				this.stackRunning = false;
 			}
@@ -238,7 +229,9 @@ awsi.prototype.processStack = function() {
 };
 awsi.prototype.keepAliveStart = function() {
 	var scope = this;
-	console.info(this.getExecTime()+">>> keepAliveStart()");
+	if (!scope.options.keepalive) {
+		return false;
+	}
 	// Stop previous timers
 	window.clearInterval(this.timerKeepalive);
 	// Start the timer
@@ -249,31 +242,25 @@ awsi.prototype.keepAliveStart = function() {
 	}, this.options.interval.keepalive);
 };
 awsi.prototype.keepAliveStop = function() {
-	console.info(this.getExecTime()+">>> keepAliveStop()");
 	window.clearInterval(this.timerKeepalive);
 };
 awsi.prototype.reconnectStart = function() {
-	console.info(this.getExecTime()+">>> reconnectStart()");
 	var scope 			= this;
-	console.group("reconnectStart");
-	console.trace();
-	console.log("reconnecting", this.reconnecting);
-	console.log("online", 		this.online);
-	console.log("reconnected", 	this.reconnected);
+	if (!scope.options.reconnect) {
+		return false;
+	}
 	if (this.reconnecting) {
 		// Already processing a connection request...
 		return this;
 	}
 	this.reconnecting 	= true;
 	this.hook("onConnect", "reconnect", function(reconnected) {
-		scope.reconnectStop();
 		// We are reconnected
 		// remove the hooks
 		scope.unhook("onConnect", "reconnect");
 		scope.unhook("onClose", "reconnect");
 	});
 	this.hook("onClose", "reconnect", function(reconnected) {
-		scope.reconnectStop();
 		// We are reconnected
 		// remove the hook
 		scope.unhook("onConnect", "reconnect");
@@ -283,11 +270,9 @@ awsi.prototype.reconnectStart = function() {
 	console.groupEnd();
 };
 awsi.prototype.reconnectStop = function() {
-	console.info(this.getExecTime()+">>> reconnectStop()");
 	this.reconnecting 	= false;
 };
 awsi.prototype.close = function() {
-	console.info(this.getExecTime()+">>> close()");
 	this.closeRequest = true;
 	this.ws.close();
 	this.onClose();
