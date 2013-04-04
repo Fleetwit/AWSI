@@ -1,0 +1,77 @@
+<!DOCTYPE HTML>
+<html lang="en-US">
+<head>
+	<title>Fleet Protocol Test</title>
+	<meta charset="UTF-8">
+	<script type="text/javascript" src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
+	<script type="text/javascript" src="json2.js"></script>
+	<script type="text/javascript" src="lib.uuid.js"></script>
+	<script type="text/javascript" src="awsi.js"></script>
+</head>
+<body>
+	<button data-action="connect">Connect</button>
+	<button data-action="levelup">level up</button>
+	<button data-action="scores">Scores</button>
+	<input type="text" name="" id="msg" /><button data-action="send">Send</button>
+	<hr />
+	<div class="log">
+		
+	</div>
+	<script type="text/javascript">
+		
+		var ws;
+		var level = 1;
+		
+		$(function() {
+			$("[data-action]").click(function() {
+				switch ($(this).data("action")) {
+					case "connect":
+						if (!ws) {
+							ws = new awsi({
+								addr:		["ws://localhost:8080"],
+								keepalive:	true,
+								reconnect:	true,
+								onConnect:	function(reconnected) {
+									level = 1;
+									console.log("onConnect",reconnected);
+									ws.ask({raceToken: '0c8b800b-2fad-4195-a3b6-d2b30d827dce'}, function(response) {
+										console.info("ws.ask",response);
+										if (response.invalidRaceToken) {
+											// Wrong raceToken
+											console.log("Invalid race token.");
+										} else if (response.timer) {
+											console.log("Race starts in "+response.timer+"ms");
+											// raceToken accepted
+										} else {
+											// We don't know
+											console.log("raceToken's response not recognized.");
+										}
+									});
+								},
+								onReceive:	function(message) {
+									console.log("onReceive",message);
+								},
+								onClose:	function() {
+									console.log("onClose");
+								}
+							});
+						}
+						ws.connect();
+					break;
+					case "send":
+						ws.send($("#msg").val());
+					break;
+					case "scores":
+						ws.send({"game_scramble":{"start":1364172728323,"end":1364172736971,"ms":8648,"multiplier":3.469010175763182,"score":3469},"game_memory":{"start":1364172666178,"end":1364172728315,"ms":62137,"multiplier":0.9656082527318667,"score":966},"game_survey":{"start":1364172736983,"end":1364172754508,"ms":17525,"multiplier":null,"score":null}});
+					break;
+					case "levelup":
+						ws.send({level: level});
+						level++;
+					break;
+				}
+			});
+			
+		});
+	</script>
+</body>
+</html>
