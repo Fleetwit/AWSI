@@ -105,15 +105,16 @@ awsi.prototype.onReceive = function(data) {
 awsi.prototype.onClose = function(data) {
 	this.stackRunning	= false;
 	this.online 		= false;
-	this.closeRequest 	= false;
 	this.ws				= false;
-	
+	console.log("this.closeRequest",this.closeRequest);
 	// Stop the stack
 	if (!this.closeRequest) {
 		// unrequested close
 		// Start the reconnection attempt
 		this.reconnectStart();
 	}
+	this.closeRequest 	= false;
+	
 	// Stop the Keepalive
 	this.keepAliveStop();
 	// process hooks first
@@ -246,8 +247,8 @@ awsi.prototype.keepAliveStop = function() {
 };
 awsi.prototype.reconnectStart = function() {
 	var scope 			= this;
-	if (!scope.options.reconnect) {
-		return false;
+	if (!this.options.reconnect || this.closeRequest) {
+		return this;
 	}
 	if (this.reconnecting) {
 		// Already processing a connection request...
@@ -275,7 +276,7 @@ awsi.prototype.reconnectStop = function() {
 awsi.prototype.close = function() {
 	this.closeRequest = true;
 	this.ws.close();
-	this.onClose();
+	//this.onClose();
 };
 
 awsi.prototype.getExecTime = function() {
