@@ -3,34 +3,120 @@
 <head>
 	<title>Fleet Protocol Test</title>
 	<meta charset="UTF-8">
-	<script type="text/javascript" src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
+	<script type="text/javascript" src="jquery-1.8.2.js"></script>
 	<script type="text/javascript" src="json2.js"></script>
 	<script type="text/javascript" src="uuid.js"></script>
 	<script type="text/javascript" src="underscore.js"></script>
 	<script type="text/javascript" src="awsi.js"></script>
+	<style type="text/css">
+		#log {
+			border:				1px solid #C5C5C5;
+			height:				250px;
+			overflow:			auto;
+		}
+		#log > div {
+			padding:			3px;
+			margin-bottom:		2px;
+			background-color:	#ECECEC;
+			font-size:			11px;
+		}
+	</style>
 </head>
 <body>
-	<button data-action="connect">Connect</button>
-	<button data-action="levelup">level up</button>
-	<button data-action="scores">Scores</button>
-	<button data-action="crash">Crash</button>
-	<input type="text" name="" id="msg" /><button data-action="send">Send</button>
+	<div id="connect">
+		<input type="text" value="ws://127.0.0.1:8022" id="control" />
+		<button data-action="connect">Connect</button>
+	</div>
+	<table id="options">
+		<tbody>
+			<tr>
+				<td>
+					Action
+				</td>
+				<td>
+					<select id="scenario">
+						<option value="op_login">Operator: login</option>
+						<option value="cylon_login">Cylon: login</option>
+					</select>
+				</td>
+			</tr>
+			
+			<tr>
+				<td>
+					
+				</td>
+				<td>
+					<button data-action="execute">Execute</button>
+				</td>
+			</tr>
+		</tbody>
+	</table>
 	<hr />
-	<div class="log">
+	<div id="log">
 		
 	</div>
 	<script type="text/javascript">
 		
 		var ws;
-		var level = 1;
+		
+		var scenarios = {
+			op_login: {
+				authToken: 	"980a21dfd43488f30ca4d27b8f686783",
+				rid:		6
+			},
+			cylon_login: {
+				raceToken: '17e5561d-ead2-442e-87bf-6af651d1926b'
+			}
+		}
 		
 		$(function() {
+			
+			$("#options").hide();
+			
 			$("[data-action]").click(function() {
 				switch ($(this).data("action")) {
 					case "connect":
 						if (!ws) {
 							ws = new awsi({
-								addr:		["ws://209.59.172.80:8024"],
+								addr:		[$("#control").val()],
+								keepalive:	true,
+								reconnect:	true,
+								onConnect:	function(reconnected) {
+									console.log("connected");
+									$("#connect").slideUp();
+									$("#options").slideDown();
+									$("#log").append('<div>Connected.</div>');
+									$("#log").scrollTop($("#log").get(0).scrollHeight);
+								},
+								onReceive:	function(message) {
+									var str = "";
+									for (var i in message) {
+										str += i+": "+(typeof(message[i])=="object"?JSON.stringify(message[i]):message[i]);
+										str += "<br />";
+									}
+									$("#log").append('<div>'+str+'</div>');
+									$("#log").scrollTop($("#log").get(0).scrollHeight);
+								},
+								onClose:	function(requested) {
+									if (requested) {
+										$("#log").append('<div>Connection closed.</div>');
+									} else {
+										$("#log").append('<div>Unable to connect.</div>');
+									}
+									$("#log").scrollTop($("#log").get(0).scrollHeight);
+								}
+							});
+						}
+						ws.connect();
+					break;
+					case "execute":
+						ws.send(scenarios[$("#scenario").val()],false,true);
+					break;
+					/*
+					case "connect":
+						if (!ws) {
+							ws = new awsi({
+								addr:		["ws://127.0.0.1:8024"],
 								keepalive:	true,
 								reconnect:	true,
 								onConnect:	function(reconnected) {
@@ -38,7 +124,7 @@
 									console.info("#############################");
 									console.info("onConnect",reconnected);
 									console.info("#############################");
-									ws.ask({raceToken: '0c8b800b-2fad-4195-a3b6-d2b30d827dce'}, function(response) {
+									ws.ask({raceToken: '868a76ae-9309-471e-9d21-20ae4fda623b'}, function(response) {
 										console.info(">>>>>> ws.ask",response);
 										if (response.invalidRaceToken) {
 											// Wrong raceToken
@@ -66,7 +152,15 @@
 						ws.send($("#msg").val());
 					break;
 					case "scores":
-						ws.send({scores:{"game_scramble":{"start":1364172728323,"end":1364172736971,"ms":8648,"multiplier":3.469010175763182,"score":3469},"game_memory":{"start":1364172666178,"end":1364172728315,"ms":62137,"multiplier":0.9656082527318667,"score":966},"game_survey":{"start":1364172736983,"end":1364172754508,"ms":17525,"multiplier":null,"score":null}}});
+						//ws.send({scores:{"game_scramble":{"start":1364172728323,"end":1364172736971,"ms":8648,"multiplier":3.469010175763182,"score":3469},"game_memory":{"start":1364172666178,"end":1364172728315,"ms":62137,"multiplier":0.9656082527318667,"score":966},"game_survey":{"start":1364172736983,"end":1364172754508,"ms":17525,"multiplier":null,"score":null}}});
+						ws.ask(
+							{
+								saveLevel:	{scores:{"game_scramble":{"start":1364172728323,"end":1364172736971,"ms":8648,"multiplier":3.469010175763182,"score":3469},"game_memory":{"start":1364172666178,"end":1364172728315,"ms":62137,"multiplier":0.9656082527318667,"score":966},"game_survey":{"start":1364172736983,"end":1364172754508,"ms":17525,"multiplier":null,"score":null}}},
+								gameIndex:	1
+							}, function(response) {
+								console.log("saveLevel",response);
+							}
+						);
 					break;
 					case "levelup":
 						ws.send({level: level});
@@ -74,7 +168,7 @@
 					break;
 					case "crash":
 						ws.send({crashtest: true});
-					break;
+					break;*/
 				}
 			});
 			
